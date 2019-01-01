@@ -2,40 +2,22 @@
 
 setTimeout, setInterval, setImmediate, requestAnimationFrame
 
-### Install
-```
+## Install
+
+```sh
 npm install time-test
 ```
 
-### `SetTimeoutContext`
-Stores state for `setTimeout`, `clearTimeout` pair
-```ts
-{
-  // next setTimeout ID
-  id: number,
+## `makeSetTimeout`
 
-  // current time
-  time: number,
-
-  // Map of IDs to state of pending setTimeout callbacks
-  // invokeTime shows next time this callback will be invoked
-  state: Map<number, { id: number, delay: number, invokeTime: number }>,
-
-  // all calls to setTimeout
-  setCalls: Array<{ delay: number }>,
-
-  // all calls to clearTimeout
-  clearCalls: Array<{ id: number }>
-}
-```
-
-### `makeSetTimeout`
 `(context: SetTimeoutContext) => (callback: () => any, delay: number) => number`
+
 ```ts
 import {
   makeSetTimeout,
   makeSetTimeoutContext,
-  tickTimeout
+  tickTimeout,
+  getSetTimeoutCalls,
 } from 'time-test'
 
 // create context
@@ -46,9 +28,9 @@ const setTimeout = makeSetTimeout(context)
 const tick = tickTimeout(context)
 
 // set a couple of callbacks
-const id0 = setTimeout(() => { console.log('cb0 invoked') }, 100)
-const id1 = setTimeout(() => { console.log('cb1 invoked') }, 200)
-const id2 = setTimeout(() => { console.log('cb2 invoked') }, 300)
+setTimeout(() => { console.log('cb0 invoked') }, 100)
+setTimeout(() => { console.log('cb1 invoked') }, 200)
+setTimeout(() => { console.log('cb2 invoked') }, 300)
 
 // tick till NEXT callback in queue,
 // this effectively forwards 100ms
@@ -59,25 +41,23 @@ tick()  // -> cb0 invoked
 // lets pass another 250ms
 tick(250) // -> cb1 invoked  -> cb2 invoked
 
-// check the state
-expect(context).deep.eq(
-  id: 3,               // next id to return,
-  time: 350,           // current time
-  state: EMPTY_MAP,    // all callbacks invoked and removed
-  setCalls: [          // all calls to setTimeout
-    { delay: 100 }, { delay: 200 }, { delay: 300 }
-  ],
-  clearCalls: []       // no calls to clearTimeout
-)
+// check the calls
+expect(getSetTimeoutCalls(context)).deep.eq([
+  { delay: 100 }, { delay: 200 }, { delay: 300 }
+])
 ```
 
-### `makeClearTimeout`
+## `makeClearTimeout`
+
 `(context: SetTimeoutContext) => (id: number) => void`
+
 ```ts
 import {
-  makeSetTimeout,
   makeSetTimeoutContext,
+  makeSetTimeout,
   makeClearTimeout,
+  getSetTimeoutCalls,
+  getClearTimeoutCalls,
 } from 'time-test'
 
 // create context
@@ -94,26 +74,25 @@ const id = setTimeout(() => {}, 100)
 clearTimeout(id)
 
 // check the state
-expect(context).deep.eq(
-  id: 1,               // next id to return,
-  time: 0,             // current time
-  state: EMPTY_MAP,    // all callbacks removed
-  setCalls: [
-    { delay: 100 }     // all calls to setTimeout
-  ],
-  clearCalls: [
-    { id: 0 }          // all calls to clearTimeout
-  ]
-)
+expect(getSetTimeoutCalls(context)).deep.eq([
+  { delay: 100 }
+])
+
+expect(getClearTimeoutCalls(context)).deep.eq([
+  { id: 0 }
+])
 ```
 
-### `makeSetInterval`
+## `makeSetInterval`
+
 `(context: SetIntervalContext) => (callback: () => any, delay: number) => number`
+
 ```ts
 import {
   makeSetInterval,
   makeSetIntervalContext,
-  tickInterval
+  tickInterval,
+  getSetIntervalCalls,
 } from 'time-test'
 
 // create context
@@ -124,10 +103,8 @@ const setInterval = makeSetInterval(context)
 const tick = tickInterval(context)
 
 // set a couple of callbacks
-const cb0 = () => { console.log('cb0 invoked') }
-const cb1 = () => { console.log('cb1 invoked') }
-const id0 = setInterval(cb0, 100)
-const id1 = setInterval(cb1, 200)
+setInterval(() => { console.log('cb0 invoked') }, 100)
+setInterval(() => { console.log('cb1 invoked') }, 200)
 
 // tick till NEXT callback in queue,
 // this effectively forwards 100ms
@@ -139,241 +116,181 @@ tick()  // -> cb0 invoked
 tick(250) // -> cb0 invoked  -> cb1 invoked
 
 // check the state
-expect(context).deep.eq(
-  id: 2,               // next id to return,
-  time: 350,           // current time
-  state: new Map([
-    [0, { cb: cb0, delay: 100, invokeTime: 350 }]
-  ]),
-  setCalls: [          // all calls to setInterval
-    { delay: 100 }, { delay: 200 }
-  ],
-  clearCalls: []       // no calls to clearInterval
-)
+expect(getSetIntervalCalls(context)).deep.eq([
+  { delay: 100 },
+  { delay: 200 },
+])
 ```
 
-### `onceAllEx`
-`(...events: string[]) => (callback: (val: { value: any, event: string, index: number, emitter: EventEmitter, emitterIndex: number }) => void) => (...emitters: EventEmitter[]) => () => void`
+## `makeClearInterval`
+
+`(context: SetIntervalContext) => (id: number) => void`
+
 ```ts
-import { onceAll } from 'node-on'
+import {
+  makeSetInterval,
+  makeSetIntervalContext,
+  getSetIntervalCalls,
+  getClearIntervalCalls,
+} from 'time-test'
 
-// we have the following emitters
-declare const e0: EventEmitter,
-              e1: EventEmitter
+// create context
+const context = makeSetIntervalContext()
 
-const observer = onceAll(
-  'data',
-  'end'    // events to listen
-)(
-  ({ value, event, index, emitter, emitterIndex }) => {} // your callback
-)
+// create setInterval
+const setInterval = makeSetInterval(context)
+const clearInterval = makeClearInterval(context)
 
-const unsub = observer(e0, e1) // subscribe to emitters, return unsubscribe function
+// set a callbacks
+const id = setInterval(() => {}, 100)
 
-// unsubscribe
-unsub()
+// clear
+clearInterval(id)
+
+// check the state
+expect(getSetIntervalCalls(context)).deep.eq([
+  { delay: 100 },
+])
+
+expect(getClearIntervalCalls(context)).deep.eq([
+  { id: 0 }
+])
 ```
 
-### `onceAllPromise`
-`(...events: string[]) => (...emitters: EventEmitter[]) => Promise<any[]>`
+## `makeSetImmediate`
+
+`(context: SetImmediateContext) => (callback: () => any) => number`
+
 ```ts
-import { onceAllPromise } from 'node-on'
+import {
+  makeSetImmediate,
+  makeSetImmediateContext,
+  tickImmediate,
+  getSetImmediateCalls,
+} from 'time-test'
 
-// we have the following emitters
-declare const e0: EventEmitter,
-              e1: EventEmitter
+// create context
+const context = makeSetImmediateContext()
 
-onceAllPromise(
-  'data', // events to listen
-)(
-  e0,
-  e1
-).then(([valueFromEmitter0, valueFromEmitter1]) => {
-  // your callback
-})
+// create setImmediate
+const setInterval = makeSetImmediate(context)
+const tick = tickImmediate(context)
+
+// set a couple of callbacks
+setImmediate(() => { console.log('cb0 invoked') })
+setImmediate(() => { console.log('cb1 invoked') })
+
+// tick ALL callbacks in queue,
+// callbacks are fired synchronously
+tick()  // -> cb0 invoked  -> cb1 invoked
+
+// check the state
+expect(getSetImmediateCalls(context)).deep.eq([
+  {},
+  {},
+])
 ```
 
-### `onceAllExPromise`
-`(...events: string[]) => (...emitters: EventEmitter[]) => Promise<{ value: any, event: string, index: number, emitter: EventEmitter, emitterIndex: number }[]>`
+## `makeClearImmediate`
+
+`(context: SetImmediateContext) => (id: number) => void`
+
 ```ts
-import { onceAllPromise } from 'node-on'
+import {
+  makeSetImmediate,
+  makeSetImmediateContext,
+  getSetImmediateCalls,
+  getClearImmediateCalls,
+} from 'time-test'
 
-// we have the following emitters
-declare const e0: EventEmitter,
-              e1: EventEmitter
+// create context
+const context = makeSetImmediateContext()
 
-onceAllPromise(
-  'data' // events to listen
-)(
-  e0,
-  e1
-).then(([emitterExValue0, emitterExValue1]) => {
-  // your callback
-})
+// create setImmediate
+const setImmediate = makeSetImmediate(context)
+const clearImmediate = makeClearImmediate(context)
+
+// set a callbacks
+const id = setImmediate(() => {}, 100)
+
+// clear
+clearImmediate(id)
+
+// check the state
+expect(getSetImmediateCalls(context)).deep.eq([
+  {},
+])
+
+expect(getClearImmediateCalls(context)).deep.eq([
+  { id: 0 }
+])
 ```
 
-### `onceAllPromiseReject`
-`(rejectEvents: string[], resolveEvents: string[]) => (...emitters: EventEmitter[]) => Promise<any[]>`
+## `makeRequestAnimationFrame`
+
+`(context: RequestAnimationFrameContext) => (callback: () => any) => number`
+
 ```ts
-import { onceAllPromise } from 'node-on'
+import {
+  makeRequestAnimationFrame,
+  makeRequestAnimationFrameContext,
+  tickAnimation,
+  getRequestAnimationFrameCalls,
+} from 'time-test'
 
-// we have the following emitters
-declare const e0: EventEmitter,
-              e1: EventEmitter
+// create context
+const context = makeRequestAnimationFrameContext()
 
-onceAllPromise(['error'], ['data'])(
-  e0,
-  e1
-).then(([ valueFromEmitter0, valueFromEmitter1 ]) => {
-  // your callback
-}).catch((error: any) => {
-  // your error handler
-})
+// create requestAnimationFrame
+const requestAnimationFrame = makeRequestAnimationFrame(context)
+const tick = tickAnimation(context)
+
+// set a couple of callbacks
+requestAnimationFrame(() => { console.log('cb0 invoked') })
+requestAnimationFrame(() => { console.log('cb1 invoked') })
+
+// tick ALL callbacks in queue,
+// callbacks are fired synchronously
+tick()  // -> cb0 invoked  -> cb1 invoked
+
+// check the state
+expect(getRequestAnimationFrameCalls(context)).deep.eq([
+  {},
+  {},
+])
 ```
 
-### `onceAllExPromiseReject`
-`(rejectEvents: string[], resolveEvents: string[]) => (...emitters: EventEmitter[]) => Promise<{ value: any, event: string, index: number, emitter: EventEmitter, emitterIndex: number }[]>`
+## `makeCancelAnimationFrame`
+
+`(context: RequestAnimationFrameContext) => (callback: () => any) => number`
+
 ```ts
-import { onceAllPromise } from 'node-on'
+import {
+  makeRequestAnimationFrame,
+  makeCancelAnimationFrame,
+  makeRequestAnimationFrameContext,
+  getRequestAnimationFrameCalls,
+  getCancelAnimationFrameCalls,
+} from 'time-test'
 
-// we have the following emitters
-declare const e0: EventEmitter,
-              e1: EventEmitter
+// create context
+const context = makeRequestAnimationFrameContext()
 
-onceAllPromise(['error'], ['data'])(
-  e0,
-  e1
-).then(([ valueExFromEmitter0, valueExFromEmitter1 ]) => {
-  // your callback
-}).catch(({ value, event, index, emitterIndex, emitter }) => {
-  // your error handler
-})
-```
+// create requestAnimationFrame
+const requestAnimationFrame = makeRequestAnimationFrame(context)
+const cancelAnimationFrame = makeCancelAnimationFrame(context)
 
-### `onceRace`
-`(...events: string[]) => (callback: (val: any) => void) => (...emitters: EventEmitter[]) => () => void`
-```ts
-import { onceRace } from 'node-on'
+// set a couple of callbacks
+const id = requestAnimationFrame(() => { console.log('cb0 invoked') })
 
-// we have the following emitters
-declare const e0: EventEmitter,
-              e1: EventEmitter
+cancelAnimationFrame(id)
 
-const observer = onceRace(
-  'data',
-  'end'    // events to listen
-)(
-  (value: any) => {} // your callback
-)
+// check the state
+expect(getRequestAnimationFrameCalls(context)).deep.eq([
+  {},
+])
 
-const unsub = observer(
-  e0,
-  e1        // subscribe to emitters
-) // return unsubscribe function
-
-// unsubscribe
-unsub()
-```
-
-### `onceRaceEx`
-`(...events: string[]) => (callback: (val: { value: any, event: string, index: number, emitterIndex: number, emitter: EventEmitter }) => void) => (...emitters: EventEmitter[]) => () => void`
-```ts
-import { onceRace } from 'node-on'
-
-// we have the following emitters
-declare const e0: EventEmitter,
-              e1: EventEmitter
-
-const observer = onceRace(
-  'data',
-  'end'    // events to listen
-)(
-  ({ value: any, emitterIndex: number, emitter: EventEmitter }) => {} // your callback
-)
-
-const unsub = observer(
-  e0,
-  e1        // subscribe to emitters
-) // return unsubscribe function
-
-// unsubscribe
-unsub()
-```
-
-### `onceRacePromise`
-`(...events: string[]) => (...emitters: EventEmitter[]) => Promise<any>`
-```ts
-import { onceRacePromise } from 'node-on'
-
-// we have the following emitters
-declare const e0: EventEmitter,
-              e1: EventEmitter
-
-onceRacePromise(
-  'data',
-  'end'    // events to listen
-)(
-  e0,
-  e1       // subscribe to emitters
-).then((value: any) => {
-  // your callback
-})
-```
-
-### `onceRaceExPromise`
-`(...events: string[]) => (...emitters: EventEmitter[]) => Promise<{ value: any, event: string, index: number, emitterIndex: number, emitter: EventEmitter }>`
-```ts
-import { onceRaceExPromise } from 'node-on'
-
-// we have the following emitters
-declare const e0: EventEmitter,
-              e1: EventEmitter
-
-onceRacePromiseEx(
-  'data',
-  'end'    // events to listen
-)(
-  e0,
-  e1       // subscribe to emitters
-).then(({ value, event, index, emitterIndex, emitter }) => {
-  // your callback
-})
-```
-
-### `onceRacePromiseReject`
-`(...events: string[]) => (...emitters: EventEmitter[]) => Promise<any>`
-```ts
-import { onceRacePromiseReject } from 'node-on'
-
-// we have the following emitters
-declare const e0: EventEmitter,
-              e1: EventEmitter
-
-onceRacePromise(['error'], ['data'])(
-  e0,
-  e1       // subscribe to emitters
-).then((value: any) => {
-  // your callback
-}).catch((error: any) => {
-  // error handler
-})
-```
-
-### `onceRaceExPromiseReject`
-`(...events: string[]) => (...emitters: EventEmitter[]) => Promise<{ value: any, event: string, index: number, emitterIndex: number, emitter: EventEmitter }>`
-```ts
-import { onceRaceExPromiseReject } from 'node-on'
-
-// we have the following emitters
-declare const e0: EventEmitter,
-              e1: EventEmitter
-
-onceRacePromiseEx(['error'], ['data'])(
-  e0,
-  e1       // subscribe to emitters
-).then(({ value, event, index, emitterIndex, emitter }) => {
-  // your callback
-}).catch(({ value, event, index, emitterIndex, emitter }) => {
-  // error handler
-})
+expect(getCancelAnimationFrameCalls(context)).deep.eq([
+  { id: 0 },
+])
 ```
