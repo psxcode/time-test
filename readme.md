@@ -1,5 +1,7 @@
 # time-test
 
+[![Greenkeeper badge](https://badges.greenkeeper.io/psxcode/time-test.svg)](https://greenkeeper.io/)
+
 setTimeout, setInterval, setImmediate, requestAnimationFrame
 
 ## Install
